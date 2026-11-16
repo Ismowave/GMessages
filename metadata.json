@@ -1,0 +1,6 @@
+{
+  "name": "Messages",
+  "description": "A fast, modern RCS and SMS messaging application inspired by Google Messages with real-time WebSocket sync, media sharing, voice notes, reactions, and Material You themes.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
