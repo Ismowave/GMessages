@@ -4,6 +4,7 @@ export interface SmsMessage {
   direction?: 'incoming' | 'outgoing';
   status?: 'sent' | 'delivered' | 'read';
   readAt?: number;
+  starred?: boolean;
   showTimestampBefore?: string;
   simLabel?: string;
   reaction?: string;
@@ -20,6 +21,10 @@ export interface SmsThread {
   timeLabel: string;
   isDraft?: boolean;
   draftText?: string;
+  themeBubbleColor?: string;
+  isArchived?: boolean;
+  isBlocked?: boolean;
+  participants?: string[];
   messages: SmsMessage[];
 }
 
@@ -43,8 +48,13 @@ export type SyncChangeType =
   | 'message:received'
   | 'message:sent'
   | 'message:read'
+  | 'message:starred'
   | 'thread:created'
   | 'thread:renamed'
+  | 'thread:updated'
+  | 'thread:archived'
+  | 'thread:deleted'
+  | 'thread:blocked'
   | 'message:reacted'
   | 'message:deleted'
   | 'thread:read'

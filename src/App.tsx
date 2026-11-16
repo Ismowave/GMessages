@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Archive,
   ArrowLeft,
   Camera,
   Check,
@@ -8,18 +9,25 @@ import {
   Edit3,
   ExternalLink,
   Forward,
+  HelpCircle,
+  Info,
+  Link2,
+  ListChecks,
   MessageSquare,
   MessageSquareText,
   MoreVertical,
+  Palette,
   Phone,
   RotateCcw,
   Search,
   Send,
+  ShieldAlert,
+  Star,
   Trash2,
+  UserPlus,
   X,
 } from 'lucide-react';
 import profileAvatar from './assets/images/avatar_marcus_vance_1794841053082.jpg';
-import { OfflineIndicator } from './components/OfflineIndicator';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
@@ -244,6 +252,15 @@ const QUICK_TEMPLATES = [
 
 const FOCUS_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+const CHAT_THEMES = [
+  { id: 'default', label: 'Default', outgoing: '#1D3557', incoming: '#202020', swatch: '#8AB4F8' },
+  { id: 'ocean', label: 'Ocean', outgoing: '#134E4A', incoming: '#1C2625', swatch: '#5EEAD4' },
+  { id: 'plum', label: 'Plum', outgoing: '#4C1D95', incoming: '#241E30', swatch: '#C4B5FD' },
+  { id: 'rose', label: 'Rose', outgoing: '#6B2138', incoming: '#2A1F24', swatch: '#F4A7B9' },
+  { id: 'forest', label: 'Forest', outgoing: '#14532D', incoming: '#1C261F', swatch: '#86EFAC' },
+  { id: 'graphite', label: 'Graphite', outgoing: '#3C4043', incoming: '#242526', swatch: '#BDC1C6' },
+];
+
 function playNotificationChime() {
   try {
     const AudioCtx =
@@ -314,8 +331,8 @@ function ThreadAvatar({
   size?: 'home' | 'header';
 }) {
   const initial = thread.recipientName.trim().charAt(0).toUpperCase() || 'M';
-  const dim = size === 'home' ? 'w-[44px] h-[44px]' : 'w-10 h-10';
-  const textSz = size === 'home' ? 'text-[22px]' : 'text-[19px]';
+  const dim = size === 'home' ? 'w-[48px] h-[48px]' : 'w-10 h-10';
+  const textSz = size === 'home' ? 'text-[23px]' : 'text-[19px]';
 
   return (
     <div
@@ -452,6 +469,17 @@ export default function App() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
+  const [addPeopleOpen, setAddPeopleOpen] = useState(false);
+  const [addPersonDraft, setAddPersonDraft] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
+  const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [feedbackDraft, setFeedbackDraft] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
@@ -466,6 +494,9 @@ export default function App() {
     () => readLocalStoragePreferences().longPressEnabled,
   );
   const [focusedMsgId, setFocusedMsgId] = useState<string | null>(null);
+  const [multiSelectIds, setMultiSelectIds] = useState<string[]>([]);
+  const [forwardMsgText, setForwardMsgText] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<SmsMessage | null>(null);
 
   const [entitySheet, setEntitySheet] = useState<{
     kind: 'phone' | 'url' | 'date';
@@ -618,10 +649,10 @@ export default function App() {
     }
   };
 
-  // Automatically synchronise pending changes when internet connectivity returns
+  // Automatically synchronise pending changes when connectivity returns silently
   useEffect(() => {
     if (isOnline && pendingSyncCount > 0) {
-      runSyncFlush(true).catch(() => {});
+      runSyncFlush(false).catch(() => {});
     }
   }, [isOnline]);
 
@@ -716,6 +747,9 @@ export default function App() {
       prev.map((t) => (t.id === thread.id ? { ...t, unreadCount: 0 } : t)),
     );
     setFocusedMsgId(null);
+    setMultiSelectIds([]);
+    setChatSearchOpen(false);
+    setChatSearchQuery('');
     setPageView('conversation');
   };
 
@@ -950,11 +984,228 @@ export default function App() {
     setFocusedMsgId(null);
   };
 
+  const handleToggleStarMessage = (msgId: string) => {
+    let nextStarred = false;
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeThread.id) return t;
+        return {
+          ...t,
+          messages: t.messages.map((m) => {
+            if (m.id !== msgId) return m;
+            nextStarred = !m.starred;
+            return { ...m, starred: nextStarred };
+          }),
+        };
+      }),
+    );
+    queueMutation('message:starred', { msgId, starred: nextStarred }, activeThread.id);
+    setFocusedMsgId(null);
+    showToast(nextStarred ? 'Message starred' : 'Star removed');
+  };
+
+  const extractUrlFromText = (text: string): string | null => {
+    const match = text.match(/https?:\/\/[^\s]+/i);
+    return match ? match[0] : null;
+  };
+
+  const handleCopyUrlFromMessage = (msg: SmsMessage) => {
+    const url = extractUrlFromText(msg.text);
+    setFocusedMsgId(null);
+    if (url) {
+      handleCopyText(url, `Copied URL: ${url}`);
+    } else {
+      showToast('No URL found in this message');
+    }
+  };
+
+  const handleForwardToThread = (targetThreadId: string) => {
+    if (!forwardMsgText) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const fwdMsgId = `msg-${Date.now()}`;
+    const fwdMsg: SmsMessage = {
+      id: fwdMsgId,
+      direction: 'outgoing',
+      status: 'sent',
+      showTimestampBefore: timeStr,
+      text: forwardMsgText,
+      simLabel: '• 1: Safaricom',
+    };
+    const targetName =
+      threads.find((t) => t.id === targetThreadId)?.recipientName || 'chat';
+    setThreads((prev) => {
+      const next = prev.map((t) =>
+        t.id === targetThreadId
+          ? {
+              ...t,
+              timeLabel: timeStr,
+              messages: [...t.messages, fwdMsg],
+            }
+          : t,
+      );
+      saveThreadsToDb(next).catch(() => {});
+      return next;
+    });
+    queueMutation(
+      'message:sent',
+      { messageId: fwdMsgId, text: forwardMsgText, timeStr, status: 'sent' },
+      targetThreadId,
+    );
+    scheduleReadReceiptProgression(targetThreadId, fwdMsgId);
+    setForwardMsgText(null);
+    setActiveThreadId(targetThreadId);
+    showToast(`Forwarded to ${targetName}`);
+  };
+
+  const toggleMultiSelectId = (msgId: string) => {
+    setMultiSelectIds((prev) =>
+      prev.includes(msgId) ? prev.filter((id) => id !== msgId) : [...prev, msgId],
+    );
+  };
+
+  const handleBatchCopy = () => {
+    const selectedMsgs = activeThread.messages.filter((m) =>
+      multiSelectIds.includes(m.id),
+    );
+    if (selectedMsgs.length === 0) return;
+    handleCopyText(
+      selectedMsgs.map((m) => m.text).join('\n\n'),
+      `Copied ${selectedMsgs.length} message${selectedMsgs.length === 1 ? '' : 's'}`,
+    );
+    setMultiSelectIds([]);
+  };
+
+  const handleBatchStar = () => {
+    const idSet = new Set(multiSelectIds);
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === activeThread.id
+          ? {
+              ...t,
+              messages: t.messages.map((m) =>
+                idSet.has(m.id) ? { ...m, starred: true } : m,
+              ),
+            }
+          : t,
+      ),
+    );
+    showToast(`Starred ${multiSelectIds.length} message${multiSelectIds.length === 1 ? '' : 's'}`);
+    setMultiSelectIds([]);
+  };
+
+  const handleBatchDelete = () => {
+    const idSet = new Set(multiSelectIds);
+    const count = multiSelectIds.length;
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeThread.id) return t;
+        const remaining = t.messages.filter((m) => !idSet.has(m.id));
+        return {
+          ...t,
+          messages:
+            remaining.length > 0
+              ? remaining
+              : INITIAL_THREADS.find((it) => it.id === t.id)?.messages || t.messages,
+        };
+      }),
+    );
+    setMultiSelectIds([]);
+    showToast(`Deleted ${count} message${count === 1 ? '' : 's'}`);
+  };
+
+  const handleAddPersonSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const person = addPersonDraft.trim();
+    if (!person) return;
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeThread.id) return t;
+        const existing = t.participants || [t.recipientName];
+        if (existing.includes(person)) return t;
+        const updatedParticipants = [...existing, person];
+        return {
+          ...t,
+          participants: updatedParticipants,
+          recipientName: updatedParticipants.join(', '),
+        };
+      }),
+    );
+    queueMutation('thread:updated', { addedPerson: person }, activeThread.id);
+    setAddPersonDraft('');
+    setAddPeopleOpen(false);
+    showToast(`Added ${person}`);
+  };
+
+  const handleSelectChatTheme = (themeId: string) => {
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === activeThread.id ? { ...t, themeBubbleColor: themeId } : t,
+      ),
+    );
+    queueMutation('thread:updated', { themeBubbleColor: themeId }, activeThread.id);
+    setThemeSheetOpen(false);
+    const themeLabel = CHAT_THEMES.find((c) => c.id === themeId)?.label || 'Default';
+    showToast(`Chat theme: ${themeLabel}`);
+  };
+
+  const handleArchiveThread = () => {
+    const targetId = activeThread.id;
+    const nextArchived = !activeThread.isArchived;
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === targetId ? { ...t, isArchived: nextArchived } : t,
+      ),
+    );
+    queueMutation('thread:archived', { isArchived: nextArchived }, targetId);
+    setMenuOpen(false);
+    setPageView('home');
+    showToast(nextArchived ? 'Conversation archived' : 'Conversation unarchived');
+  };
+
+  const handleTrashThread = () => {
+    const targetId = activeThread.id;
+    setThreads((prev) => {
+      const remaining = prev.filter((t) => t.id !== targetId);
+      const next = remaining.length > 0 ? remaining : INITIAL_THREADS;
+      setActiveThreadId(next[0].id);
+      return next;
+    });
+    queueMutation('thread:deleted', {}, targetId);
+    setTrashConfirmOpen(false);
+    setMenuOpen(false);
+    setPageView('home');
+    showToast('Conversation moved to Trash');
+  };
+
+  const handleToggleBlockThread = () => {
+    const targetId = activeThread.id;
+    const nextBlocked = !activeThread.isBlocked;
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === targetId ? { ...t, isBlocked: nextBlocked } : t,
+      ),
+    );
+    queueMutation('thread:blocked', { isBlocked: nextBlocked }, targetId);
+    setBlockConfirmOpen(false);
+    setMenuOpen(false);
+    showToast(
+      nextBlocked
+        ? `${activeThread.recipientName} blocked & reported`
+        : `${activeThread.recipientName} unblocked`,
+    );
+  };
+
   const handleResetConversation = () => {
     setThreads(INITIAL_THREADS);
     setActiveThreadId('thread-mpesa');
     setFocusedMsgId(null);
     setMenuOpen(false);
+    setDetailsOpen(false);
     setProfileSheetOpen(false);
     setFontScale(1);
     queueMutation('threads:reset', {});
@@ -1070,9 +1321,19 @@ export default function App() {
   const lastMessageId = activeThread.messages[activeThread.messages.length - 1]?.id;
   const computedFontPx = Math.round(15 * fontScale);
   const isBlurActive = focusedMsgId !== null;
+  const activeChatTheme =
+    CHAT_THEMES.find((c) => c.id === activeThread.themeBubbleColor) || CHAT_THEMES[0];
+  const starredMessages = activeThread.messages.filter((m) => m.starred);
+  const visibleConversationMessages = chatSearchQuery.trim()
+    ? activeThread.messages.filter((m) =>
+        m.text.toLowerCase().includes(chatSearchQuery.trim().toLowerCase()),
+      )
+    : activeThread.messages;
 
   const filteredHomeThreads = threads.filter((t) => {
-    if (!homeSearch.trim()) return true;
+    if (!homeSearch.trim()) {
+      return !t.isArchived;
+    }
     const q = homeSearch.toLowerCase();
     return (
       t.recipientName.toLowerCase().includes(q) ||
@@ -1131,7 +1392,7 @@ export default function App() {
               ) : (
                 <div className="h-11 flex items-center justify-between gap-3">
                   <h1 className="font-display text-[22px] leading-none tracking-[-0.015em] text-[#E8EAED] whitespace-nowrap">
-                    <span className="font-medium text-[#F1F3F4]">Google</span>
+                    <span className="font-medium text-[#F1F3F4]">Google</span>{' '}
                     <span className="font-normal text-[#E3E3E3]">Messages</span>
                   </h1>
 
@@ -1149,7 +1410,7 @@ export default function App() {
                       type="button"
                       aria-label="Account profile"
                       onClick={() => setProfileSheetOpen(true)}
-                      className="w-[34px] h-[34px] rounded-full overflow-hidden ring-1 ring-white/15 cursor-pointer shrink-0"
+                      className="w-[38px] h-[38px] rounded-full overflow-hidden ring-1 ring-white/15 cursor-pointer shrink-0"
                     >
                       <img
                         src={userAvatar || profileAvatar}
@@ -1161,13 +1422,6 @@ export default function App() {
                 </div>
               )}
             </header>
-
-            {/* Non-intrusive Connectivity & Sync Indicator */}
-            <OfflineIndicator
-              isOnline={isOnline}
-              isSyncing={isSyncing}
-              pendingCount={pendingSyncCount}
-            />
 
             {/* Rounded-top #121212 Conversation List Surface */}
             <div className="flex-1 bg-[#121212] rounded-t-[28px] overflow-hidden flex flex-col">
@@ -1297,10 +1551,53 @@ export default function App() {
           </div>
         ) : (
           /* ================= CONVERSATION VIEW ================= */
-          <div className="flex flex-col h-full bg-[#121212] relative">
-            {/* Conversation Header */}
+          <div className="flex flex-col h-full bg-[#202020] relative">
+            {/* Conversation Header (#202020 matching homepage) */}
+            {multiSelectIds.length > 0 ? (
+              <header className="h-[60px] px-2 bg-[#202020] flex items-center justify-between shrink-0 relative z-20">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Cancel selection"
+                    onClick={() => setMultiSelectIds([])}
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-[#E8EAED] active:bg-white/10 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                  <span className="text-[18px] font-medium text-[#E8EAED] tabular-nums">
+                    {multiSelectIds.length} selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 pr-1">
+                  <button
+                    type="button"
+                    aria-label="Copy selected"
+                    onClick={handleBatchCopy}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-[#E8EAED] hover:bg-white/10 cursor-pointer"
+                  >
+                    <Copy className="w-[19px] h-[19px]" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Star selected"
+                    onClick={handleBatchStar}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-[#E8EAED] hover:bg-white/10 cursor-pointer"
+                  >
+                    <Star className="w-[19px] h-[19px]" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete selected"
+                    onClick={handleBatchDelete}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-[#F4A7B9] hover:bg-white/10 cursor-pointer"
+                  >
+                    <Trash2 className="w-[19px] h-[19px]" />
+                  </button>
+                </div>
+              </header>
+            ) : (
             <header
-              className={`h-[58px] px-2 bg-[#121212] flex items-center justify-between shrink-0 relative z-20 transition-all duration-200 ${
+              className={`h-[60px] px-2 bg-[#202020] flex items-center justify-between shrink-0 relative z-20 transition-all duration-200 ${
                 isBlurActive ? 'blur-[6px] opacity-40 pointer-events-none' : ''
               }`}
             >
@@ -1310,6 +1607,9 @@ export default function App() {
                   aria-label="Back to Google Messages"
                   onClick={() => {
                     setFocusedMsgId(null);
+                    setMultiSelectIds([]);
+                    setChatSearchOpen(false);
+                    setChatSearchQuery('');
                     setPageView('home');
                   }}
                   className="w-11 h-11 rounded-full flex items-center justify-center text-[#E8EAED] active:bg-white/10 transition-colors cursor-pointer"
@@ -1358,7 +1658,115 @@ export default function App() {
                 </button>
 
                 {menuOpen && (
-                  <div className="absolute right-2 top-11 w-60 rounded-2xl bg-[#252525] border border-white/10 shadow-2xl py-1.5 z-40">
+                  <div className="absolute right-2 top-11 w-64 max-h-[75dvh] overflow-y-auto rounded-2xl bg-[#252525] border border-white/10 shadow-2xl py-1.5 z-40 messages-scroll">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setAddPeopleOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Add people</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setDetailsOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <Info className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Details</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setStarredOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-3">
+                        <Star className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                        <span>Starred</span>
+                      </span>
+                      {starredMessages.length > 0 && (
+                        <span className="text-xs text-[#F4A7B9] tabular-nums">
+                          {starredMessages.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setChatSearchOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <Search className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Search</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setThemeSheetOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <Palette className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Chat theme</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleArchiveThread}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <Archive className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>{activeThread.isArchived ? 'Unarchive' : 'Archive'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setTrashConfirmOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Trash</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setBlockConfirmOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>
+                        {activeThread.isBlocked ? 'Unblock contact' : 'Block & report spam'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setHelpOpen(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                    >
+                      <HelpCircle className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                      <span>Help &amp; feedback</span>
+                    </button>
+
+                    <div className="my-1 border-t border-white/10" />
+
                     <button
                       type="button"
                       onClick={() => {
@@ -1366,9 +1774,9 @@ export default function App() {
                         setRenameDraft(activeThread.recipientName);
                         setRenameOpen(true);
                       }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-2.5 cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
                     >
-                      <Edit3 className="w-4 h-4 text-[#B0B3B8]" />
+                      <Edit3 className="w-4 h-4 text-[#B0B3B8] shrink-0" />
                       <span>Edit recipient name</span>
                     </button>
                     <button
@@ -1389,47 +1797,68 @@ export default function App() {
                         {longPressEnabled ? 'On' : 'Off'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const last =
-                          activeThread.messages[activeThread.messages.length - 1];
-                        if (last) handleCopyText(last.text, 'Latest message copied');
-                        setMenuOpen(false);
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Copy className="w-4 h-4 text-[#B0B3B8]" />
-                      <span>Copy latest message</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleResetConversation}
-                      className="w-full px-4 py-2.5 text-left text-sm text-[#E8EAED] hover:bg-white/10 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <RotateCcw className="w-4 h-4 text-[#B0B3B8]" />
-                      <span>Reset messages</span>
-                    </button>
                   </div>
                 )}
               </div>
             </header>
+            )}
 
-            <OfflineIndicator
-              isOnline={isOnline}
-              isSyncing={isSyncing}
-              pendingCount={pendingSyncCount}
-            />
+            {/* Rounded-top #121212 Messaging Area Surface matching Homepage */}
+            <div className="flex-1 bg-[#121212] rounded-t-[28px] overflow-hidden flex flex-col">
+              {chatSearchOpen && (
+                <div className="px-4 pt-3 pb-1 shrink-0">
+                  <div className="h-10 rounded-full bg-[#202020] px-3.5 flex items-center gap-2 border border-white/10">
+                    <Search className="w-4 h-4 text-[#9AA0A6] shrink-0" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={chatSearchQuery}
+                      onChange={(e) => setChatSearchQuery(e.target.value)}
+                      placeholder="Search in conversation"
+                      className="flex-1 bg-transparent text-sm text-[#E8EAED] placeholder-[#9AA0A6] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Close conversation search"
+                      onClick={() => {
+                        setChatSearchOpen(false);
+                        setChatSearchQuery('');
+                      }}
+                      className="p-1 rounded-full text-[#9AA0A6] hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
-            {/* Scrollable Conversation Body (Two-finger pinch-to-zoom enabled) */}
-            <div
-              className="flex-1 overflow-y-auto px-4 pt-3 pb-4 messages-scroll touch-pan-y"
-              onTouchStart={handleMessagesTouchStart}
-              onTouchMove={handleMessagesTouchMove}
-              onTouchEnd={handleMessagesTouchEnd}
-              onWheel={handleMessagesWheel}
-            >
-              {activeThread.messages.map((msg) => {
+              {activeThread.isBlocked && (
+                <div className="mx-4 mt-3 px-3.5 py-2.5 rounded-2xl bg-[#2A1F20] border border-[#F2A89B]/20 flex items-center justify-between gap-2 text-xs text-[#F2A89B] shrink-0">
+                  <span>You blocked {activeThread.recipientName}.</span>
+                  <button
+                    type="button"
+                    onClick={handleToggleBlockThread}
+                    className="font-semibold underline underline-offset-2 cursor-pointer"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              )}
+
+              {/* Scrollable Conversation Body (Two-finger pinch-to-zoom enabled) */}
+              <div
+                className="flex-1 overflow-y-auto px-4 pt-3 pb-4 messages-scroll touch-pan-y"
+                onTouchStart={handleMessagesTouchStart}
+                onTouchMove={handleMessagesTouchMove}
+                onTouchEnd={handleMessagesTouchEnd}
+                onWheel={handleMessagesWheel}
+              >
+                {visibleConversationMessages.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-[#9AA0A6]">
+                    No messages match &ldquo;{chatSearchQuery}&rdquo;
+                  </div>
+                ) : (
+                  visibleConversationMessages.map((msg) => {
                 const isFocused = focusedMsgId === msg.id;
                 const shouldBlur = isBlurActive && !isFocused;
                 const isLast = msg.id === lastMessageId;
@@ -1485,17 +1914,26 @@ export default function App() {
                       }`}
                     >
                       <div
-                        onPointerDown={(e) => handleBubblePointerDown(msg.id, e)}
+                        onPointerDown={(e) => {
+                          if (multiSelectIds.length === 0) {
+                            handleBubblePointerDown(msg.id, e);
+                          }
+                        }}
                         onPointerMove={handleBubblePointerMove}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
                         onContextMenu={(e) => {
-                          if (longPressEnabled) {
+                          if (longPressEnabled && multiSelectIds.length === 0) {
                             e.preventDefault();
                             setFocusedMsgId(msg.id);
                           }
                         }}
                         onClick={(e) => {
+                          if (multiSelectIds.length > 0) {
+                            e.stopPropagation();
+                            toggleMultiSelectId(msg.id);
+                            return;
+                          }
                           if (isFocused) {
                             e.stopPropagation();
                           }
@@ -1503,22 +1941,49 @@ export default function App() {
                         style={{
                           fontSize: `${computedFontPx}px`,
                           lineHeight: 1.42,
+                          backgroundColor: isFocused
+                            ? isOutgoing
+                              ? activeChatTheme.outgoing
+                              : '#2A2A2A'
+                            : isOutgoing
+                              ? activeChatTheme.outgoing
+                              : activeChatTheme.incoming,
                         }}
                         className={`relative max-w-[85%] rounded-[20px] px-4 py-3 break-words select-text transition-transform duration-200 ${
                           isFocused
-                            ? isOutgoing
-                              ? 'bg-[#294B77] ring-1 ring-[#8AB4F8]/40 shadow-2xl scale-[1.01]'
-                              : 'bg-[#2A2A2A] ring-1 ring-white/20 shadow-2xl scale-[1.01]'
-                            : isOutgoing
-                              ? 'bg-[#1D3557]'
-                              : 'bg-[#202020]'
+                            ? 'ring-1 ring-white/25 shadow-2xl scale-[1.01]'
+                            : multiSelectIds.includes(msg.id)
+                              ? 'ring-2 ring-[#F4A7B9] cursor-pointer'
+                              : ''
                         } text-[#E8EAED]`}
                       >
+                        {multiSelectIds.length > 0 && (
+                          <span
+                            className={`absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center border ${
+                              multiSelectIds.includes(msg.id)
+                                ? 'bg-[#F4A7B9] border-[#F4A7B9] text-[#121212]'
+                                : 'bg-[#202020] border-white/30 text-transparent'
+                            }`}
+                          >
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
                         <p>
-                          {renderLinkedSmsText(msg.text, (kind, value) =>
-                            setEntitySheet({ kind, value }),
-                          )}
+                          {renderLinkedSmsText(msg.text, (kind, value) => {
+                            if (multiSelectIds.length > 0) {
+                              toggleMultiSelectId(msg.id);
+                              return;
+                            }
+                            setEntitySheet({ kind, value });
+                          })}
                         </p>
+
+                        {msg.starred && (
+                          <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] text-[#FAD047]">
+                            <Star className="w-3 h-3 fill-current" />
+                            <span>Starred</span>
+                          </span>
+                        )}
 
                         {msg.reaction && (
                           <span className="absolute -bottom-2.5 right-3 px-1.5 py-0.5 rounded-full bg-[#2A2A2A] border border-white/15 text-xs shadow-md">
@@ -1589,45 +2054,84 @@ export default function App() {
                       >
                         <div
                           onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-[#2A2A2A] border border-white/15 shadow-2xl"
+                          className="w-56 rounded-2xl bg-[#252628] border border-white/15 shadow-2xl py-1.5"
                         >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForwardMsgText(msg.text);
+                              setFocusedMsgId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                          >
+                            <Forward className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                            <span>Forward</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyUrlFromMessage(msg)}
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center justify-between gap-2 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-3">
+                              <Link2 className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                              <span>Copy URL</span>
+                            </span>
+                            {!extractUrlFromText(msg.text) && (
+                              <span className="text-[10px] text-[#9AA0A6]">None</span>
+                            )}
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
                               handleCopyText(msg.text);
                               setFocusedMsgId(null);
                             }}
-                            className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
                           >
-                            <Copy className="w-3.5 h-3.5" />
+                            <Copy className="w-4 h-4 text-[#B0B3B8] shrink-0" />
                             <span>Copy</span>
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              handleCopyText(msg.text, 'Message ready to forward');
-                              setFocusedMsgId(null);
-                            }}
-                            className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                            onClick={() => handleToggleStarMessage(msg.id)}
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
                           >
-                            <Forward className="w-3.5 h-3.5" />
-                            <span>Forward</span>
+                            <Star
+                              className={`w-4 h-4 shrink-0 ${
+                                msg.starred ? 'text-[#FAD047] fill-current' : 'text-[#B0B3B8]'
+                              }`}
+                            />
+                            <span>{msg.starred ? 'Unstar' : 'Star'}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteMessage(msg.id)}
-                            className="px-3 py-1.5 rounded-xl text-xs text-[#F4A7B9] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                            className="w-full px-4 py-2 text-left text-xs text-[#F4A7B9] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4 shrink-0" />
                             <span>Delete</span>
                           </button>
                           <button
                             type="button"
-                            onClick={() => setFocusedMsgId(null)}
-                            aria-label="Close focus"
-                            className="p-1.5 rounded-xl text-[#9AA0A6] hover:bg-white/10 cursor-pointer"
+                            onClick={() => {
+                              setMultiSelectIds([msg.id]);
+                              setFocusedMsgId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <ListChecks className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                            <span>Select more</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInfoMessage(msg);
+                              setFocusedMsgId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-3 cursor-pointer"
+                          >
+                            <Info className="w-4 h-4 text-[#B0B3B8] shrink-0" />
+                            <span>Info</span>
                           </button>
                         </div>
                       </div>
@@ -1653,7 +2157,8 @@ export default function App() {
                     )}
                   </div>
                 );
-              })}
+              })
+                )}
 
               <div ref={scrollEndRef} />
             </div>
@@ -1684,7 +2189,7 @@ export default function App() {
               </form>
             ) : (
               <div
-                className={`shrink-0 bg-[#202020] rounded-t-[24px] px-6 pt-4 pb-5 text-center relative transition-all duration-200 ${
+                className={`shrink-0 bg-[#202020] rounded-t-[24px] px-5 pt-4 pb-5 text-left flex flex-col items-start relative transition-all duration-200 ${
                   isBlurActive ? 'blur-[6px] opacity-40 pointer-events-none' : ''
                 }`}
                 onClick={(e) => e.stopPropagation()}
@@ -1695,7 +2200,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setLearnMoreOpen((v) => !v)}
-                  className="mt-1 text-[13px] text-[#F4A7B9] underline underline-offset-2 cursor-pointer"
+                  className="mt-1 text-[13px] text-[#F4A7B9] underline underline-offset-2 cursor-pointer text-left"
                 >
                   Learn more
                 </button>
@@ -1709,6 +2214,7 @@ export default function App() {
                 />
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -2255,6 +2761,486 @@ export default function App() {
                 <span>Receive SMS</span>
               </button>
             </form>
+          </div>
+        )}
+
+        {/* Add People Modal */}
+        {addPeopleOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-center justify-center p-5"
+            onClick={() => setAddPeopleOpen(false)}
+          >
+            <form
+              onSubmit={handleAddPersonSubmit}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-3xl bg-[#202020] border border-white/10 p-5 space-y-4 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-[#E8EAED]">Add people</h2>
+                <button
+                  type="button"
+                  onClick={() => setAddPeopleOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <input
+                type="text"
+                autoFocus
+                value={addPersonDraft}
+                onChange={(e) => setAddPersonDraft(e.target.value)}
+                placeholder="Name or phone number"
+                className="w-full h-11 rounded-xl bg-[#121212] border border-white/15 px-3.5 text-sm text-[#E8EAED] focus:outline-none focus:border-[#F4A7B9]"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddPeopleOpen(false)}
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!addPersonDraft.trim()}
+                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#F4A7B9] text-[#121212] disabled:opacity-40 cursor-pointer"
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Conversation Details Bottom Sheet */}
+        {detailsOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setDetailsOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-4 max-h-[82dvh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <ThreadAvatar thread={activeThread} size="header" />
+                  <div>
+                    <h2 className="text-base font-medium text-[#E8EAED]">
+                      {activeThread.recipientName}
+                    </h2>
+                    <p className="text-xs text-[#9AA0A6]">
+                      {activeThread.canReply ? 'SMS / Chat · SIM 1' : 'One-way alert · Safaricom'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    setRenameDraft(activeThread.recipientName);
+                    setRenameOpen(true);
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#E8EAED] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Edit recipient name</span>
+                  <Edit3 className="w-4 h-4 text-[#9AA0A6]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLongPressEnabled((v) => !v);
+                    showToast(
+                      !longPressEnabled
+                        ? 'Long-press focus enabled'
+                        : 'Long-press focus disabled',
+                    );
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#E8EAED] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Focus on long press</span>
+                  <span className="text-xs font-medium text-[#F4A7B9]">
+                    {longPressEnabled ? 'On' : 'Off'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    setThemeSheetOpen(true);
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#E8EAED] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Chat theme</span>
+                  <span className="text-xs text-[#9AA0A6]">{activeChatTheme.label}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetConversation}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#F4A7B9] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Restore default messages</span>
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Starred Messages Sheet */}
+        {starredOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setStarredOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-3 max-h-[75dvh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-[#FAD047] fill-current" />
+                  <h2 className="text-base font-medium text-[#E8EAED]">Starred messages</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStarredOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {starredMessages.length === 0 ? (
+                <p className="text-sm text-[#9AA0A6] py-6 text-center">
+                  No starred messages yet. Long press any message and tap Star.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {starredMessages.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-3 rounded-2xl bg-[#2A2A2A] flex items-start justify-between gap-2"
+                    >
+                      <p className="text-sm text-[#E8EAED] line-clamp-3">{m.text}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStarMessage(m.id)}
+                        aria-label="Unstar message"
+                        className="p-1 text-[#FAD047] shrink-0 cursor-pointer"
+                      >
+                        <Star className="w-4 h-4 fill-current" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Chat Theme Picker Sheet */}
+        {themeSheetOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setThemeSheetOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-[#E8EAED]">Chat theme</h2>
+                <button
+                  type="button"
+                  onClick={() => setThemeSheetOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5">
+                {CHAT_THEMES.map((theme) => {
+                  const selected = activeChatTheme.id === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => handleSelectChatTheme(theme.id)}
+                      className={`p-3 rounded-2xl border text-left transition-colors cursor-pointer ${
+                        selected
+                          ? 'border-[#F4A7B9] bg-[#2A2A2A]'
+                          : 'border-white/10 bg-[#191919] hover:bg-[#252525]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: theme.outgoing }}
+                        />
+                        <span
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: theme.swatch }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-[#E8EAED]">{theme.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Trash Confirmation Modal */}
+        {trashConfirmOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-center justify-center p-5"
+            onClick={() => setTrashConfirmOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-3xl bg-[#202020] border border-white/10 p-5 space-y-4 shadow-2xl"
+            >
+              <h2 className="text-base font-medium text-[#E8EAED]">Move to Trash?</h2>
+              <p className="text-sm text-[#B0B3B8]">
+                This conversation with {activeThread.recipientName} will be deleted from your device.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTrashConfirmOpen(false)}
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTrashThread}
+                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#7D2B2B] text-[#FCE8E6] cursor-pointer"
+                >
+                  Move to Trash
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Block & Report Spam Modal */}
+        {blockConfirmOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-center justify-center p-5"
+            onClick={() => setBlockConfirmOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-3xl bg-[#202020] border border-white/10 p-5 space-y-4 shadow-2xl"
+            >
+              <h2 className="text-base font-medium text-[#E8EAED]">
+                {activeThread.isBlocked
+                  ? `Unblock ${activeThread.recipientName}?`
+                  : `Block & report spam?`}
+              </h2>
+              <p className="text-sm text-[#B0B3B8]">
+                {activeThread.isBlocked
+                  ? 'You will be able to receive messages from this sender again.'
+                  : `You won't receive notifications from ${activeThread.recipientName}, and this conversation will be marked as spam locally.`}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBlockConfirmOpen(false)}
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleBlockThread}
+                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#F4A7B9] text-[#121212] cursor-pointer"
+                >
+                  {activeThread.isBlocked ? 'Unblock' : 'Block'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Help & Feedback Sheet */}
+        {helpOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setHelpOpen(false)}
+          >
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!feedbackDraft.trim()) return;
+                setFeedbackDraft('');
+                setHelpOpen(false);
+                showToast('Feedback saved locally');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-[#E8EAED]">Help &amp; feedback</h2>
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <ul className="text-xs text-[#B0B3B8] space-y-1.5 leading-relaxed">
+                <li>• Pinch with two fingers inside any chat to resize message text.</li>
+                <li>• Long press a message to focus it, react, star, copy, or delete.</li>
+                <li>• Tap a contact&apos;s name in the header to customize it anytime.</li>
+              </ul>
+              <textarea
+                rows={3}
+                value={feedbackDraft}
+                onChange={(e) => setFeedbackDraft(e.target.value)}
+                placeholder="Share feedback (works offline)..."
+                className="w-full rounded-xl bg-[#121212] border border-white/15 p-3 text-sm text-[#E8EAED] placeholder-[#747775] focus:outline-none focus:border-[#F4A7B9] resize-none"
+              />
+              <button
+                type="submit"
+                disabled={!feedbackDraft.trim()}
+                className="w-full h-10 rounded-full bg-[#F4A7B9] disabled:opacity-40 text-[#121212] text-sm font-semibold cursor-pointer"
+              >
+                Submit feedback
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Forward Message Picker Sheet */}
+        {forwardMsgText && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setForwardMsgText(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-3 max-h-[75dvh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-[#E8EAED]">Forward to</h2>
+                <button
+                  type="button"
+                  onClick={() => setForwardMsgText(null)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-[#9AA0A6] line-clamp-2 bg-[#161616] rounded-xl p-2.5 border border-white/5">
+                {forwardMsgText}
+              </p>
+              <div className="space-y-1.5">
+                {threads.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleForwardToThread(t.id)}
+                    className="w-full p-2.5 rounded-2xl hover:bg-white/10 flex items-center gap-3 text-left cursor-pointer"
+                  >
+                    <ThreadAvatar thread={t} size="header" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[#E8EAED] truncate">
+                        {t.recipientName}
+                      </p>
+                      <p className="text-xs text-[#9AA0A6]">
+                        {t.canReply ? 'SMS' : 'Alert thread'}
+                      </p>
+                    </div>
+                    <Forward className="w-4 h-4 text-[#9AA0A6]" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Message Info Bottom Sheet */}
+        {infoMessage && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setInfoMessage(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-3.5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-[#F4A7B9]" />
+                  <h2 className="text-base font-medium text-[#E8EAED]">Message info</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInfoMessage(null)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between py-1.5 border-b border-white/10">
+                  <span className="text-[#9AA0A6]">Type</span>
+                  <span className="text-[#E8EAED]">Text message (SMS)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/10">
+                  <span className="text-[#9AA0A6]">
+                    {infoMessage.direction === 'outgoing' ? 'To' : 'From'}
+                  </span>
+                  <span className="text-[#E8EAED]">{activeThread.recipientName}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/10">
+                  <span className="text-[#9AA0A6]">Status</span>
+                  <span className="text-[#E8EAED] capitalize">
+                    {infoMessage.direction === 'outgoing'
+                      ? infoMessage.status || 'sent'
+                      : 'Received'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/10">
+                  <span className="text-[#9AA0A6]">Time</span>
+                  <span className="text-[#E8EAED] tabular-nums">
+                    {infoMessage.readAt
+                      ? new Date(infoMessage.readAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : infoMessage.showTimestampBefore || activeThread.timeLabel}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-[#9AA0A6]">SIM</span>
+                  <span className="text-[#E8EAED]">SIM 1 · Safaricom</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -90,7 +90,7 @@ define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
     "revision": "26dd2a1019e4e3e695016f53b1b67aab"
   }, {
     "url": "index.html",
-    "revision": "725877300639349ee039ad918a71bb91"
+    "revision": "8aead9d65e8da014f0ac381c860e5d3b"
   }, {
     "url": "icon.svg",
     "revision": "720c0ba6ce705b6c27e79d71efa7badd"
@@ -119,10 +119,10 @@ define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
     "url": "assets/roboto-latin-400-normal-BqEyEoaF.woff2",
     "revision": null
   }, {
-    "url": "assets/index-C0xARrd0.js",
+    "url": "assets/index-YQqOG283.js",
     "revision": null
   }, {
-    "url": "assets/index-BbQKljnD.css",
+    "url": "assets/index-BSu-q5Fp.css",
     "revision": null
   }, {
     "url": "assets/google-sans-latin-700-normal-CV7aHjQV.woff",
