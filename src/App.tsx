@@ -153,6 +153,7 @@ function renderLinkedSmsText(
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onLinkTap('url', part);
                 }}
