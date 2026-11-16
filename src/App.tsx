@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Camera,
   Check,
+  CheckCheck,
   Copy,
   Edit3,
   ExternalLink,
   Forward,
   MessageSquare,
-  MessageSquarePlus,
+  MessageSquareText,
   MoreVertical,
   Phone,
   RotateCcw,
@@ -16,29 +18,36 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-
-interface SmsMessage {
-  id: string;
-  text: string;
-  showTimestampBefore?: string;
-  simLabel?: string;
-  reaction?: string;
-}
-
-interface SmsThread {
-  id: string;
-  recipientName: string;
-  avatarColor: string;
-  canReply: boolean;
-  messages: SmsMessage[];
-}
+import profileAvatar from './assets/images/avatar_marcus_vance_1794841053082.jpg';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import {
+  type SmsMessage,
+  type SmsThread,
+  type SyncChangeType,
+  LS_FONT_SCALE_KEY,
+  LS_LEGACY_THREADS_KEY,
+  LS_THREADS_KEY,
+  enqueueSyncChange,
+  flushPendingSyncQueue,
+  loadOfflineState,
+  mergeWithHomepageThreads,
+  readLocalStoragePreferences,
+  savePreferencesToDb,
+  saveThreadsToDb,
+} from './utils/offlineDb';
 
 const INITIAL_THREADS: SmsThread[] = [
   {
     id: 'thread-mpesa',
     recipientName: 'MPESA',
-    avatarColor: '#F5C518',
+    avatarColor: '#FAD047',
+    avatarType: 'initial',
     canReply: false,
+    isPinned: true,
+    unreadCount: 0,
+    timeLabel: '00:45',
     messages: [
       {
         id: 'msg-1',
@@ -53,29 +62,165 @@ const INITIAL_THREADS: SmsThread[] = [
     ],
   },
   {
-    id: 'thread-safaricom',
-    recipientName: 'Safaricom',
-    avatarColor: '#36B34A',
+    id: 'thread-iandm',
+    recipientName: 'IANDMBANK',
+    avatarColor: '#C57AFF',
+    avatarType: 'person',
     canReply: false,
+    isPinned: true,
+    unreadCount: 0,
+    timeLabel: 'Sun',
     messages: [
       {
-        id: 'msg-s1',
-        showTimestampBefore: 'Yesterday',
-        text: 'Dear Customer, your 1.5GB daily data bundle is active and valid until 11:59 PM. Dial *544# to check balance.',
+        id: 'msg-i1',
+        showTimestampBefore: 'Sun',
+        text: 'Dear Customer, we are pleased to inform you that your monthly e-statement is now available in your I&M mobile app.',
         simLabel: '• 1: Safaricom',
       },
     ],
   },
   {
-    id: 'thread-abdisalan',
-    recipientName: 'Abdisalan Ahmed',
-    avatarColor: '#8AB4F8',
-    canReply: true,
+    id: 'thread-ziidi',
+    recipientName: 'ZIIDI',
+    avatarColor: '#F06A57',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: true,
+    unreadCount: 1,
+    timeLabel: 'Sun',
     messages: [
       {
-        id: 'msg-a1',
-        showTimestampBefore: '15/11/26',
-        text: 'Received, thank you! Let me confirm on my end.',
+        id: 'msg-z1',
+        showTimestampBefore: 'Sun',
+        text: 'You have successfully withdrawn Ksh. 50.00 of transaction code UKFMR256BN. Your new Ziidi balance is Ksh. 420.00.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-mkenya',
+    recipientName: 'MKENYA SYS',
+    avatarColor: '#FAD047',
+    avatarType: 'person',
+    canReply: true,
+    isPinned: true,
+    unreadCount: 0,
+    timeLabel: 'Draft',
+    isDraft: true,
+    draftText: 'https://vt.tiktok.com/ZSgr8qbXt/',
+    messages: [
+      {
+        id: 'msg-mk1',
+        showTimestampBefore: 'Sat',
+        text: 'System notification: your backup verification completed successfully.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-treasure',
+    recipientName: 'Treasure',
+    avatarColor: '#FAD047',
+    avatarType: 'initial',
+    canReply: true,
+    isPinned: false,
+    unreadCount: 19,
+    timeLabel: '19:47',
+    messages: [
+      {
+        id: 'msg-t1',
+        showTimestampBefore: '19:47',
+        text: 'Please call me thank you. TEXT, WIN, CHEMSHA! Dial *188# now, text with Chemsha and stand a chance to win daily rewards.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-mshwari',
+    recipientName: 'MShwari',
+    avatarColor: '#6EC477',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: false,
+    unreadCount: 1,
+    timeLabel: '17:29',
+    messages: [
+      {
+        id: 'msg-ms1',
+        showTimestampBefore: '17:29',
+        text: 'Dear Customer, top up your M-Shwari savings account ahead of December expenses, earn interest and grow your limit.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-loop',
+    recipientName: 'LOOP_info',
+    avatarColor: '#F06A57',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: false,
+    unreadCount: 13,
+    timeLabel: '16:15',
+    messages: [
+      {
+        id: 'msg-l1',
+        showTimestampBefore: '16:15',
+        text: "Hey Samuel, don't let low balance slow you down. Add money to your LOOP wallet and continue enjoying seamless payments.",
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-safaricom',
+    recipientName: 'SAFARICOM',
+    avatarColor: '#6EC477',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: false,
+    unreadCount: 3,
+    timeLabel: '14:04',
+    messages: [
+      {
+        id: 'msg-sf1',
+        showTimestampBefore: '14:04',
+        text: 'Get 60 minutes for only 60 Bonga Points and keep talking! Dial *126*0# TODAY! You have 1,420 Bonga Points available.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-okoa',
+    recipientName: 'Okoa Jahazi',
+    avatarColor: '#FAD047',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: false,
+    unreadCount: 39,
+    timeLabel: 'Thu',
+    messages: [
+      {
+        id: 'msg-ok1',
+        showTimestampBefore: 'Thu',
+        text: 'You will not be able to access Okoa Jahazi for the next 24 hours due to late repayment on your previous advance.',
+        simLabel: '• 1: Safaricom',
+      },
+    ],
+  },
+  {
+    id: 'thread-20836',
+    recipientName: '20836',
+    avatarColor: '#F56BA2',
+    avatarType: 'person',
+    canReply: false,
+    isPinned: false,
+    unreadCount: 6,
+    timeLabel: 'Thu',
+    messages: [
+      {
+        id: 'msg-208',
+        showTimestampBefore: 'Thu',
+        text: "'It's been a tough year, but guess what? You made it — and better days are loading 🙏 Share a smile with someone today.",
         simLabel: '• 1: Safaricom',
       },
     ],
@@ -98,8 +243,6 @@ const QUICK_TEMPLATES = [
 ];
 
 const FOCUS_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-const STORAGE_KEY = 'mpesa_sms_threads_v2';
-const FONT_SCALE_KEY = 'mpesa_sms_font_scale_v1';
 
 function playNotificationChime() {
   try {
@@ -127,8 +270,68 @@ function playNotificationChime() {
       osc.stop(now + i * 0.09 + 0.3);
     });
   } catch {
-    // Ignore audio context errors
+    // Ignore audio errors
   }
+}
+
+function PersonSilhouetteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[26px] h-[26px] fill-[#1C1C1C]" aria-hidden="true">
+      <path d="M12 11.6a3.55 3.55 0 1 0 0-7.1 3.55 3.55 0 0 0 0 7.1zm0 2c-3.45 0-6.4 1.82-6.4 4.05 0 .64.52 1.15 1.16 1.15h10.48c.64 0 1.16-.51 1.16-1.15 0-2.23-2.95-4.05-6.4-4.05z" />
+    </svg>
+  );
+}
+
+function UprightPinIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="w-[15px] h-[15px] stroke-[#9AA0A6] fill-none"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5z" />
+      <path d="M12 14v6" />
+    </svg>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[22px] h-[22px] fill-[#7CACF8]" aria-hidden="true">
+      <path d="M12 2L14.3 9.7L22 12L14.3 14.3L12 22L9.7 14.3L2 12L9.7 9.7L12 2Z" />
+    </svg>
+  );
+}
+
+function ThreadAvatar({
+  thread,
+  size = 'home',
+}: {
+  thread: SmsThread;
+  size?: 'home' | 'header';
+}) {
+  const initial = thread.recipientName.trim().charAt(0).toUpperCase() || 'M';
+  const dim = size === 'home' ? 'w-[44px] h-[44px]' : 'w-10 h-10';
+  const textSz = size === 'home' ? 'text-[22px]' : 'text-[19px]';
+
+  return (
+    <div
+      className={`${dim} rounded-full flex items-center justify-center shrink-0 select-none overflow-hidden`}
+      style={{ backgroundColor: thread.avatarColor }}
+      aria-hidden="true"
+    >
+      {thread.avatarType === 'initial' ? (
+        <span className={`font-display ${textSz} font-light text-[#1C1C1C] leading-none`}>
+          {initial}
+        </span>
+      ) : (
+        <PersonSilhouetteIcon />
+      )}
+    </div>
+  );
 }
 
 function renderLinkedSmsText(
@@ -202,12 +405,26 @@ function renderLinkedSmsText(
 }
 
 export default function App() {
+  const isOnline = useOnlineStatus();
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | undefined>(() =>
+    readLocalStoragePreferences().lastSyncedAt,
+  );
+  const [userAvatar, setUserAvatar] = useState<string | undefined>(() =>
+    readLocalStoragePreferences().userAvatar,
+  );
+
   const [threads, setThreads] = useState<SmsThread[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved =
+        localStorage.getItem(LS_THREADS_KEY) ||
+        localStorage.getItem(LS_LEGACY_THREADS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as SmsThread[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return mergeWithHomepageThreads(parsed, INITIAL_THREADS);
+        }
       }
     } catch {
       // Ignore storage errors
@@ -216,12 +433,15 @@ export default function App() {
   });
 
   const [activeThreadId, setActiveThreadId] = useState<string>('thread-mpesa');
-  const [pageView, setPageView] = useState<'conversation' | 'home'>('conversation');
+  const [pageView, setPageView] = useState<'home' | 'conversation'>('home');
+  const [homeSearchOpen, setHomeSearchOpen] = useState(false);
   const [homeSearch, setHomeSearch] = useState('');
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [sparkleSheetOpen, setSparkleSheetOpen] = useState(false);
 
   const [fontScale, setFontScale] = useState<number>(() => {
     try {
-      const saved = Number(localStorage.getItem(FONT_SCALE_KEY));
+      const saved = Number(localStorage.getItem(LS_FONT_SCALE_KEY));
       if (!Number.isNaN(saved) && saved >= 0.8 && saved <= 1.9) return saved;
     } catch {
       // Ignore
@@ -238,10 +458,13 @@ export default function App() {
   const [renameDraft, setRenameDraft] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatName, setNewChatName] = useState('');
+  const [newChatMessage, setNewChatMessage] = useState('');
   const [replyDraft, setReplyDraft] = useState('');
 
   // Long-press focus & blur state
-  const [longPressEnabled, setLongPressEnabled] = useState(true);
+  const [longPressEnabled, setLongPressEnabled] = useState<boolean>(
+    () => readLocalStoragePreferences().longPressEnabled,
+  );
   const [focusedMsgId, setFocusedMsgId] = useState<string | null>(null);
 
   const [entitySheet, setEntitySheet] = useState<{
@@ -250,12 +473,13 @@ export default function App() {
   } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Persistent notification popup state (stays until swiped away!)
+  // Persistent notification popup state (stays until swiped away)
   const [activeNotification, setActiveNotification] = useState<{
     id: string;
     threadId: string;
     senderName: string;
     avatarColor: string;
+    avatarType: 'initial' | 'person';
     text: string;
     code?: string;
   } | null>(null);
@@ -268,6 +492,8 @@ export default function App() {
   const scrollEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const zoomBadgeTimerRef = useRef<number | null>(null);
+  const readReceiptTimersRef = useRef<number[]>([]);
+  const hasHydratedDbRef = useRef(false);
 
   // Long-press refs
   const longPressTimerRef = useRef<number | null>(null);
@@ -282,23 +508,137 @@ export default function App() {
   const notifSwipeRef = useRef<{ startX: number; startY: number } | null>(null);
 
   const activeThread =
-    threads.find((t) => t.id === activeThreadId) || threads[0];
+    threads.find((t) => t.id === activeThreadId) || threads[0] || INITIAL_THREADS[0];
 
+  const scheduleReadReceiptProgression = (threadId: string, messageId: string) => {
+    const deliveredTimer = window.setTimeout(() => {
+      setThreads((prev) => {
+        const next = prev.map((t) =>
+          t.id === threadId
+            ? {
+                ...t,
+                messages: t.messages.map((m) =>
+                  m.id === messageId && m.status === 'sent'
+                    ? { ...m, status: 'delivered' as const }
+                    : m,
+                ),
+              }
+            : t,
+        );
+        saveThreadsToDb(next).catch(() => {});
+        return next;
+      });
+    }, 700);
+
+    const readTimer = window.setTimeout(() => {
+      const readAt = Date.now();
+      setThreads((prev) => {
+        const next = prev.map((t) =>
+          t.id === threadId
+            ? {
+                ...t,
+                messages: t.messages.map((m) =>
+                  m.id === messageId && m.status !== 'read'
+                    ? { ...m, status: 'read' as const, readAt }
+                    : m,
+                ),
+              }
+            : t,
+        );
+        saveThreadsToDb(next).catch(() => {});
+        return next;
+      });
+      queueMutation(
+        'message:read',
+        { messageId, status: 'read', readAt },
+        threadId,
+      );
+    }, 1800);
+
+    readReceiptTimersRef.current.push(deliveredTimer, readTimer);
+  };
+
+  // Hydrate locally stored messages, contacts, preferences & pending sync queue from IndexedDB
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(threads));
-    } catch {
-      // Ignore storage errors
-    }
+    let active = true;
+    loadOfflineState(INITIAL_THREADS).then((state) => {
+      if (!active) return;
+      if (state.threads.length > 0) {
+        setThreads(state.threads);
+        state.threads.forEach((t) => {
+          t.messages.forEach((m) => {
+            if (m.direction === 'outgoing' && m.status && m.status !== 'read') {
+              scheduleReadReceiptProgression(t.id, m.id);
+            }
+          });
+        });
+      }
+      setFontScale(state.preferences.fontScale);
+      setLongPressEnabled(state.preferences.longPressEnabled);
+      setLastSyncedAt(state.preferences.lastSyncedAt);
+      if (state.preferences.userAvatar) {
+        setUserAvatar(state.preferences.userAvatar);
+      }
+      setPendingSyncCount(state.pendingCount);
+      hasHydratedDbRef.current = true;
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Persist threads & contacts to IndexedDB + localStorage mirror
+  useEffect(() => {
+    if (!hasHydratedDbRef.current) return;
+    saveThreadsToDb(threads).catch(() => {});
   }, [threads]);
 
+  // Persist user preferences to IndexedDB + localStorage mirror
   useEffect(() => {
+    if (!hasHydratedDbRef.current) return;
+    savePreferencesToDb({ fontScale, longPressEnabled, userAvatar: userAvatar || '' }).catch(() => {});
+  }, [fontScale, longPressEnabled, userAvatar]);
+
+  const runSyncFlush = async (announce = false) => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    setIsSyncing(true);
     try {
-      localStorage.setItem(FONT_SCALE_KEY, String(fontScale));
-    } catch {
-      // Ignore storage errors
+      const result = await flushPendingSyncQueue();
+      setPendingSyncCount(result.remainingCount);
+      if (result.syncedAt) {
+        setLastSyncedAt(result.syncedAt);
+      }
+      if (announce && result.syncedCount > 0) {
+        showToast(
+          `Synced ${result.syncedCount} offline change${result.syncedCount === 1 ? '' : 's'}`,
+        );
+      }
+    } finally {
+      setIsSyncing(false);
     }
-  }, [fontScale]);
+  };
+
+  // Automatically synchronise pending changes when internet connectivity returns
+  useEffect(() => {
+    if (isOnline && pendingSyncCount > 0) {
+      runSyncFlush(true).catch(() => {});
+    }
+  }, [isOnline]);
+
+  const queueMutation = (
+    type: SyncChangeType,
+    payload: Record<string, unknown>,
+    threadId?: string,
+  ) => {
+    enqueueSyncChange(type, payload, threadId)
+      .then((count) => {
+        setPendingSyncCount(count);
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          runSyncFlush(false).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -308,6 +648,7 @@ export default function App() {
       }
       if (e.key === 'Escape') {
         setFocusedMsgId(null);
+        setHomeSearchOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -316,6 +657,8 @@ export default function App() {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
       if (zoomBadgeTimerRef.current) window.clearTimeout(zoomBadgeTimerRef.current);
       if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+      readReceiptTimersRef.current.forEach((id) => window.clearTimeout(id));
+      readReceiptTimersRef.current = [];
     };
   }, []);
 
@@ -336,6 +679,46 @@ export default function App() {
     showToast(label);
   };
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const minSide = Math.min(img.width, img.height);
+        const sx = (img.width - minSide) / 2;
+        const sy = (img.height - minSide) / 2;
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setUserAvatar(dataUrl);
+        savePreferencesToDb({ userAvatar: dataUrl }).catch(() => {});
+        showToast('Profile photo updated');
+      };
+      if (typeof reader.result === 'string') {
+        img.src = reader.result;
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const openThread = (thread: SmsThread) => {
+    setActiveThreadId(thread.id);
+    setReplyDraft(thread.isDraft && thread.draftText ? thread.draftText : '');
+    setThreads((prev) =>
+      prev.map((t) => (t.id === thread.id ? { ...t, unreadCount: 0 } : t)),
+    );
+    setFocusedMsgId(null);
+    setPageView('conversation');
+  };
+
   const triggerIncomingNotification = (thread: SmsThread, msg: SmsMessage) => {
     const codeMatch = msg.text.match(/\b([A-Z0-9]{10})\b/);
     setNotifDrag({ x: 0, y: 0, dragging: false });
@@ -344,6 +727,7 @@ export default function App() {
       threadId: thread.id,
       senderName: thread.recipientName,
       avatarColor: thread.avatarColor,
+      avatarType: thread.avatarType,
       text: msg.text,
       code: codeMatch?.[1],
     });
@@ -394,11 +778,18 @@ export default function App() {
 
     const updatedThread: SmsThread = {
       ...activeThread,
+      timeLabel: timeStr,
+      unreadCount: pageView === 'home' ? activeThread.unreadCount + 1 : 0,
       messages: [...activeThread.messages, newMsg],
     };
 
     setThreads((prev) =>
       prev.map((t) => (t.id === activeThread.id ? updatedThread : t)),
+    );
+    queueMutation(
+      'message:received',
+      { messageId: newMsg.id, text: clean, timeStr },
+      activeThread.id,
     );
     setDraftText('');
     setComposerOpen(false);
@@ -420,15 +811,33 @@ export default function App() {
     });
     const newMsg: SmsMessage = {
       id: `msg-${Date.now()}`,
+      direction: 'outgoing',
+      status: 'sent',
       showTimestampBefore: timeStr,
       text: clean,
       simLabel: '• 1: Safaricom',
     };
-    setThreads((prev) =>
-      prev.map((t) =>
-        t.id === activeThread.id ? { ...t, messages: [...t.messages, newMsg] } : t,
-      ),
+    setThreads((prev) => {
+      const next = prev.map((t) =>
+        t.id === activeThread.id
+          ? {
+              ...t,
+              timeLabel: timeStr,
+              isDraft: false,
+              draftText: undefined,
+              messages: [...t.messages, newMsg],
+            }
+          : t,
+      );
+      saveThreadsToDb(next).catch(() => {});
+      return next;
+    });
+    queueMutation(
+      'message:sent',
+      { messageId: newMsg.id, text: clean, timeStr, status: 'sent' },
+      activeThread.id,
     );
+    scheduleReadReceiptProgression(activeThread.id, newMsg.id);
     setReplyDraft('');
     setTimeout(() => {
       scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -444,6 +853,7 @@ export default function App() {
         t.id === activeThread.id ? { ...t, recipientName: nextName } : t,
       ),
     );
+    queueMutation('thread:renamed', { recipientName: nextName }, activeThread.id);
     setRenameOpen(false);
     showToast(`Renamed to ${nextName}`);
   };
@@ -452,28 +862,53 @@ export default function App() {
     e.preventDefault();
     const clean = newChatName.trim();
     if (!clean) return;
-    const colors = ['#F5C518', '#36B34A', '#8AB4F8', '#F4A7B9', '#A8C7FA'];
+    const colors = ['#FAD047', '#C57AFF', '#F06A57', '#6EC477', '#F56BA2'];
+    const nowTime = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const hasCustomFirstMessage = Boolean(newChatMessage.trim());
+    const initialMsg =
+      newChatMessage.trim() ||
+      `Conversation started with ${clean}.`;
+    const firstMsgId = `msg-${Date.now()}`;
     const newThread: SmsThread = {
       id: `thread-${Date.now()}`,
       recipientName: clean,
       avatarColor: colors[threads.length % colors.length],
+      avatarType: 'initial',
       canReply: true,
+      isPinned: false,
+      unreadCount: 0,
+      timeLabel: nowTime,
       messages: [
         {
-          id: `msg-${Date.now()}`,
-          showTimestampBefore: new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          }),
-          text: `Conversation started with ${clean}. Tap the avatar to receive a simulated SMS.`,
+          id: firstMsgId,
+          direction: hasCustomFirstMessage ? 'outgoing' : 'incoming',
+          status: hasCustomFirstMessage ? 'sent' : undefined,
+          showTimestampBefore: nowTime,
+          text: initialMsg,
           simLabel: '• 1: Safaricom',
         },
       ],
     };
-    setThreads((prev) => [newThread, ...prev]);
+    setThreads((prev) => {
+      const next = [newThread, ...prev];
+      saveThreadsToDb(next).catch(() => {});
+      return next;
+    });
+    queueMutation(
+      'thread:created',
+      { recipientName: clean, initialMsg },
+      newThread.id,
+    );
+    if (hasCustomFirstMessage) {
+      scheduleReadReceiptProgression(newThread.id, firstMsgId);
+    }
     setActiveThreadId(newThread.id);
     setNewChatName('');
+    setNewChatMessage('');
     setNewChatOpen(false);
     setPageView('conversation');
   };
@@ -492,6 +927,7 @@ export default function App() {
         };
       }),
     );
+    queueMutation('message:deleted', { messageId: id }, activeThread.id);
     setFocusedMsgId(null);
     showToast('Message deleted');
   };
@@ -510,6 +946,7 @@ export default function App() {
         };
       }),
     );
+    queueMutation('message:reacted', { msgId, emoji }, activeThread.id);
     setFocusedMsgId(null);
   };
 
@@ -518,11 +955,13 @@ export default function App() {
     setActiveThreadId('thread-mpesa');
     setFocusedMsgId(null);
     setMenuOpen(false);
+    setProfileSheetOpen(false);
     setFontScale(1);
-    showToast('Conversation reset');
+    queueMutation('threads:reset', {});
+    showToast('Conversations restored');
   };
 
-  // Long-press handlers for message bubbles
+  // Long-press handlers
   const cancelLongPress = () => {
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
@@ -599,7 +1038,7 @@ export default function App() {
     }
   };
 
-  // Swipe-to-dismiss handlers for the persistent notification popup
+  // Swipe-to-dismiss handlers for notification popup
   const handleNotifPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -628,7 +1067,6 @@ export default function App() {
     }
   };
 
-  const avatarInitial = activeThread.recipientName.trim().charAt(0).toUpperCase() || 'M';
   const lastMessageId = activeThread.messages[activeThread.messages.length - 1]?.id;
   const computedFontPx = Math.round(15 * fontScale);
   const isBlurActive = focusedMsgId !== null;
@@ -638,118 +1076,228 @@ export default function App() {
     const q = homeSearch.toLowerCase();
     return (
       t.recipientName.toLowerCase().includes(q) ||
+      t.draftText?.toLowerCase().includes(q) ||
       t.messages.some((m) => m.text.toLowerCase().includes(q))
     );
   });
 
   return (
     <div
-      className="min-h-dvh w-full bg-[#090909] flex justify-center"
+      className="min-h-dvh w-full bg-[#121212] flex justify-center"
       onClick={() => {
         setMenuOpen(false);
         setFocusedMsgId(null);
       }}
     >
-      {/* Mobile Android Viewport Shell (no bottom Android navigation bar) */}
-      <div className="w-full max-w-[430px] h-dvh bg-[#121212] text-[#E8EAED] flex flex-col overflow-hidden relative">
+      {/* Mobile Android Viewport Shell (No status bar, no bottom Android navigation bar) */}
+      <div className="w-full max-w-[460px] h-dvh bg-[#202020] text-[#E8EAED] flex flex-col overflow-hidden relative">
         {pageView === 'home' ? (
-          /* ================= HOME MESSAGES PAGE ================= */
-          <div className="flex flex-col h-full bg-[#121212] relative">
-            <header className="h-[60px] px-4 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-[#8AB4F8] flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-[#121212] fill-current" />
-                </div>
-                <h1 className="text-[20px] font-medium tracking-tight text-[#E8EAED]">
-                  Messages
-                </h1>
-              </div>
-
-              <button
-                type="button"
-                aria-label="Reset conversations"
-                onClick={handleResetConversation}
-                className="w-10 h-10 rounded-full flex items-center justify-center text-[#9AA0A6] hover:bg-white/10 cursor-pointer"
-                title="Reset"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </header>
-
-            <div className="px-4 pb-3 shrink-0">
-              <div className="h-11 rounded-full bg-[#202020] px-4 flex items-center gap-3">
-                <Search className="w-4 h-4 text-[#9AA0A6] shrink-0" />
-                <input
-                  type="text"
-                  value={homeSearch}
-                  onChange={(e) => setHomeSearch(e.target.value)}
-                  placeholder="Search conversations"
-                  className="w-full bg-transparent text-sm text-[#E8EAED] placeholder-[#9AA0A6] focus:outline-none"
-                />
-                {homeSearch && (
+          /* ================= GOOGLE MESSAGES HOMEPAGE ================= */
+          <div className="flex flex-col h-full bg-[#202020] relative">
+            {/* Top Navigation (#202020) */}
+            <header className="px-4 pt-2.5 pb-3 bg-[#202020] shrink-0">
+              {homeSearchOpen ? (
+                <div className="h-11 rounded-full bg-[#2D2E30] px-3.5 flex items-center gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setHomeSearch('')}
-                    className="p-1 text-[#9AA0A6] hover:text-white cursor-pointer"
+                    aria-label="Close search"
+                    onClick={() => {
+                      setHomeSearchOpen(false);
+                      setHomeSearch('');
+                    }}
+                    className="p-1.5 -ml-1 rounded-full text-[#E8EAED] hover:bg-white/10 cursor-pointer"
                   >
-                    <X className="w-4 h-4" />
+                    <ArrowLeft className="w-5 h-5" />
                   </button>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={homeSearch}
+                    onChange={(e) => setHomeSearch(e.target.value)}
+                    placeholder="Search conversations"
+                    className="flex-1 bg-transparent text-[15px] text-[#E8EAED] placeholder-[#9AA0A6] focus:outline-none"
+                  />
+                  {homeSearch && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setHomeSearch('')}
+                      className="p-1.5 rounded-full text-[#9AA0A6] hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="h-11 flex items-center justify-between gap-3">
+                  <h1 className="font-display text-[22px] leading-none tracking-[-0.015em] text-[#E8EAED] whitespace-nowrap">
+                    <span className="font-medium text-[#F1F3F4]">Google</span>
+                    <span className="font-normal text-[#E3E3E3]">Messages</span>
+                  </h1>
+
+                  <div className="flex items-center gap-4 shrink-0">
+                    <button
+                      type="button"
+                      aria-label="Search conversations"
+                      onClick={() => setHomeSearchOpen(true)}
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-[#E8EAED] hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer"
+                    >
+                      <Search className="w-[22px] h-[22px] stroke-[2]" />
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label="Account profile"
+                      onClick={() => setProfileSheetOpen(true)}
+                      className="w-[34px] h-[34px] rounded-full overflow-hidden ring-1 ring-white/15 cursor-pointer shrink-0"
+                    >
+                      <img
+                        src={userAvatar || profileAvatar}
+                        alt="User profile avatar"
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </header>
+
+            {/* Non-intrusive Connectivity & Sync Indicator */}
+            <OfflineIndicator
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              pendingCount={pendingSyncCount}
+            />
+
+            {/* Rounded-top #121212 Conversation List Surface */}
+            <div className="flex-1 bg-[#121212] rounded-t-[28px] overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-y-auto pt-2.5 pb-28 messages-scroll">
+                {filteredHomeThreads.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center px-8 py-16">
+                    <div className="w-14 h-14 rounded-full bg-[#202020] flex items-center justify-center text-[#9AA0A6] mb-3.5">
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
+                    <p className="text-[15px] font-medium text-[#E8EAED]">
+                      {homeSearch ? 'No matching conversations' : 'No conversations yet'}
+                    </p>
+                    <p className="text-xs text-[#9AA0A6] mt-1.5 max-w-[240px]">
+                      {homeSearch
+                        ? 'Try searching a different contact name or message keyword.'
+                        : 'Tap Start chat to begin a new conversation.'}
+                    </p>
+                    {!homeSearch && (
+                      <button
+                        type="button"
+                        onClick={handleResetConversation}
+                        className="mt-4 px-4 py-2 rounded-full bg-[#202020] hover:bg-[#2A2A2A] text-xs font-medium text-[#F4A7B9] cursor-pointer"
+                      >
+                        Restore sample threads
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <ul>
+                    {filteredHomeThreads.map((thread) => {
+                      const last = thread.messages[thread.messages.length - 1];
+                      const isUnread = thread.unreadCount > 0;
+                      const previewText = thread.isDraft
+                        ? `You: ${thread.draftText || ''}`
+                        : last
+                          ? `${last.direction === 'outgoing' ? 'You: ' : ''}${last.text.replace(/\n/g, ' ')}`
+                          : '';
+
+                      return (
+                        <li key={thread.id}>
+                          <button
+                            type="button"
+                            onClick={() => openThread(thread)}
+                            className="w-full min-h-[76px] px-4 py-[11px] hover:bg-[#191919] active:bg-[#222222] flex items-center gap-4 text-left transition-colors cursor-pointer"
+                          >
+                            <ThreadAvatar thread={thread} size="home" />
+
+                            <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div
+                                  className={`font-display text-[16px] truncate leading-[1.3] ${
+                                    isUnread
+                                      ? 'font-medium text-white'
+                                      : 'font-normal text-[#E3E3E3]'
+                                  }`}
+                                >
+                                  {thread.recipientName}
+                                </div>
+
+                                <p
+                                  className={`text-[14px] leading-[1.35] line-clamp-2 mt-0.5 ${
+                                    thread.isDraft
+                                      ? 'italic text-[#B0B3B8]'
+                                      : isUnread
+                                        ? 'font-medium text-[#EFEFEF]'
+                                        : 'font-normal text-[#B0B3B8]'
+                                  }`}
+                                >
+                                  {previewText}
+                                </p>
+                              </div>
+
+                              <div className="shrink-0 flex flex-col items-end gap-1.5 pt-0.5">
+                                <span
+                                  className={`font-roboto text-[12px] tabular-nums leading-none ${
+                                    thread.isDraft
+                                      ? 'italic text-[#9AA0A6]'
+                                      : isUnread
+                                        ? 'font-medium text-[#E8EAED]'
+                                        : 'text-[#9AA0A6]'
+                                  }`}
+                                >
+                                  {thread.timeLabel}
+                                </span>
+
+                                {(thread.isPinned || isUnread) && (
+                                  <div className="flex items-center gap-2">
+                                    {thread.isPinned && <UprightPinIcon />}
+                                    {isUnread && (
+                                      <span className="font-roboto min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#F2B8A2] text-[#1A1A1A] text-[11px] font-semibold flex items-center justify-center tabular-nums leading-none">
+                                        {thread.unreadCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-2 pb-24 messages-scroll">
-              {filteredHomeThreads.map((thread) => {
-                const last = thread.messages[thread.messages.length - 1];
-                const initial = thread.recipientName.trim().charAt(0).toUpperCase() || 'M';
-                return (
-                  <button
-                    key={thread.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveThreadId(thread.id);
-                      setPageView('conversation');
-                      setFocusedMsgId(null);
-                    }}
-                    className="w-full px-3 py-3 rounded-2xl hover:bg-[#1E1E1E] active:bg-[#252525] flex items-center gap-3.5 text-left transition-colors cursor-pointer"
-                  >
-                    <div
-                      className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-display text-lg font-medium text-[#121212]"
-                      style={{ backgroundColor: thread.avatarColor }}
-                    >
-                      {initial}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-[15px] font-medium text-[#E8EAED] truncate">
-                          {thread.recipientName}
-                        </span>
-                        <span className="text-[11px] text-[#9AA0A6] shrink-0 tabular-nums">
-                          {last?.showTimestampBefore || 'Now'}
-                        </span>
-                      </div>
-                      <p className="text-[13px] text-[#9AA0A6] truncate mt-0.5">
-                        {last?.text.replace(/\n/g, ' ') || 'No messages'}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Bottom-Right Floating Action Buttons (Sparkle + Dark-Red Start Chat) */}
+            <div className="absolute bottom-5 right-4 flex flex-col items-end gap-3 z-30">
+              <button
+                type="button"
+                aria-label="Quick message templates"
+                onClick={() => setSparkleSheetOpen(true)}
+                className="w-[52px] h-[52px] rounded-[16px] bg-[#303134] hover:bg-[#3A3B3E] shadow-[0_6px_18px_rgba(0,0,0,0.5)] flex items-center justify-center transition-transform active:scale-95 cursor-pointer"
+              >
+                <SparkleIcon />
+              </button>
 
-            {/* Start chat FAB */}
-            <button
-              type="button"
-              onClick={() => setNewChatOpen(true)}
-              className="absolute bottom-5 right-5 h-14 px-5 rounded-2xl bg-[#004A77] hover:bg-[#005B94] text-[#C2E7FF] shadow-xl flex items-center gap-2.5 text-sm font-medium cursor-pointer"
-            >
-              <MessageSquarePlus className="w-5 h-5" />
-              <span>Start chat</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setNewChatOpen(true)}
+                className="h-[56px] pl-[18px] pr-[20px] rounded-[16px] bg-[#7D2B2B] hover:bg-[#8E3333] text-[#FCE8E6] shadow-[0_8px_22px_rgba(0,0,0,0.55)] flex items-center gap-3 text-[15px] font-medium transition-transform active:scale-95 cursor-pointer whitespace-nowrap"
+              >
+                <MessageSquareText className="w-[21px] h-[21px] text-[#FCE8E6] stroke-[2]" />
+                <span>Start chat</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* ================= CONVERSATION VIEW ================= */
-          <>
+          <div className="flex flex-col h-full bg-[#121212] relative">
             {/* Conversation Header */}
             <header
               className={`h-[58px] px-2 bg-[#121212] flex items-center justify-between shrink-0 relative z-20 transition-all duration-200 ${
@@ -759,7 +1307,7 @@ export default function App() {
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
-                  aria-label="Back to messages home"
+                  aria-label="Back to Google Messages"
                   onClick={() => {
                     setFocusedMsgId(null);
                     setPageView('home');
@@ -778,12 +1326,9 @@ export default function App() {
                       setComposerOpen(true);
                     }}
                     aria-label="Contact avatar"
-                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 select-none focus:outline-none"
-                    style={{ backgroundColor: activeThread.avatarColor }}
+                    className="shrink-0 focus:outline-none"
                   >
-                    <span className="font-display text-[19px] font-medium text-[#121212] leading-none">
-                      {avatarInitial}
-                    </span>
+                    <ThreadAvatar thread={activeThread} size="header" />
                   </button>
 
                   {/* Tap recipient name to customize it */}
@@ -870,6 +1415,12 @@ export default function App() {
               </div>
             </header>
 
+            <OfflineIndicator
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              pendingCount={pendingSyncCount}
+            />
+
             {/* Scrollable Conversation Body (Two-finger pinch-to-zoom enabled) */}
             <div
               className="flex-1 overflow-y-auto px-4 pt-3 pb-4 messages-scroll touch-pan-y"
@@ -882,6 +1433,7 @@ export default function App() {
                 const isFocused = focusedMsgId === msg.id;
                 const shouldBlur = isBlurActive && !isFocused;
                 const isLast = msg.id === lastMessageId;
+                const isOutgoing = msg.direction === 'outgoing';
 
                 return (
                   <div
@@ -903,26 +1455,32 @@ export default function App() {
                     {/* Floating Reaction Picker when this message is long-press focused */}
                     {isFocused && (
                       <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="mb-2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[#2A2A2A] border border-white/15 shadow-2xl"
+                        className={`mb-2 flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}
                       >
-                        {FOCUS_REACTIONS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => handleToggleReaction(msg.id, emoji)}
-                            className={`w-8 h-8 rounded-full text-lg flex items-center justify-center hover:bg-white/10 active:scale-110 transition-transform cursor-pointer ${
-                              msg.reaction === emoji ? 'bg-white/15' : ''
-                            }`}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[#2A2A2A] border border-white/15 shadow-2xl"
+                        >
+                          {FOCUS_REACTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => handleToggleReaction(msg.id, emoji)}
+                              className={`w-8 h-8 rounded-full text-lg flex items-center justify-center hover:bg-white/10 active:scale-110 transition-transform cursor-pointer ${
+                                msg.reaction === emoji ? 'bg-white/15' : ''
+                              }`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 
                     <div
                       className={`flex items-center gap-2.5 transition-all duration-200 ${
+                        isOutgoing ? 'justify-end' : 'justify-start'
+                      } ${
                         shouldBlur ? 'blur-[6px] opacity-35 pointer-events-none' : ''
                       }`}
                     >
@@ -948,8 +1506,12 @@ export default function App() {
                         }}
                         className={`relative max-w-[85%] rounded-[20px] px-4 py-3 break-words select-text transition-transform duration-200 ${
                           isFocused
-                            ? 'bg-[#2A2A2A] ring-1 ring-white/20 shadow-2xl scale-[1.01]'
-                            : 'bg-[#202020]'
+                            ? isOutgoing
+                              ? 'bg-[#294B77] ring-1 ring-[#8AB4F8]/40 shadow-2xl scale-[1.01]'
+                              : 'bg-[#2A2A2A] ring-1 ring-white/20 shadow-2xl scale-[1.01]'
+                            : isOutgoing
+                              ? 'bg-[#1D3557]'
+                              : 'bg-[#202020]'
                         } text-[#E8EAED]`}
                       >
                         <p>
@@ -965,8 +1527,7 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Circular outlined forwarding icon on latest message */}
-                      {isLast && !isFocused && (
+                      {!isOutgoing && isLast && !isFocused && (
                         <button
                           type="button"
                           aria-label="Forward message"
@@ -981,54 +1542,98 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Focused Action Bar below focused message */}
-                    {isFocused && (
+                    {/* Visual Delivery / Read Receipt Indicator for Sent Messages */}
+                    {isOutgoing && (
                       <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-2.5 inline-flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-[#2A2A2A] border border-white/15 shadow-2xl"
+                        className={`mt-1 pr-1 flex items-center justify-end gap-1 transition-all duration-200 ${
+                          shouldBlur ? 'blur-[6px] opacity-35' : ''
+                        }`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleCopyText(msg.text);
-                            setFocusedMsgId(null);
-                          }}
-                          className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleCopyText(msg.text, 'Message ready to forward');
-                            setFocusedMsgId(null);
-                          }}
-                          className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Forward className="w-3.5 h-3.5" />
-                          <span>Forward</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          className="px-3 py-1.5 rounded-xl text-xs text-[#F4A7B9] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFocusedMsgId(null)}
-                          aria-label="Close focus"
-                          className="p-1.5 rounded-xl text-[#9AA0A6] hover:bg-white/10 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        {msg.status === 'read' ? (
+                          <>
+                            <CheckCheck
+                              className="w-3.5 h-3.5 text-[#8AB4F8] stroke-[2.2]"
+                              aria-label="Read"
+                            />
+                            <span className="font-roboto text-[11px] font-medium text-[#8AB4F8]">
+                              Read
+                            </span>
+                          </>
+                        ) : msg.status === 'delivered' ? (
+                          <>
+                            <CheckCheck
+                              className="w-3.5 h-3.5 text-[#9AA0A6] stroke-[2]"
+                              aria-label="Delivered"
+                            />
+                            <span className="font-roboto text-[11px] text-[#9AA0A6]">
+                              Delivered
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Check
+                              className="w-3.5 h-3.5 text-[#9AA0A6] stroke-[2]"
+                              aria-label="Sent"
+                            />
+                            <span className="font-roboto text-[11px] text-[#9AA0A6]">
+                              Sent
+                            </span>
+                          </>
+                        )}
                       </div>
                     )}
 
-                    {msg.simLabel && isLast && (
+                    {isFocused && (
+                      <div
+                        className={`mt-2.5 flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-[#2A2A2A] border border-white/15 shadow-2xl"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleCopyText(msg.text);
+                              setFocusedMsgId(null);
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleCopyText(msg.text, 'Message ready to forward');
+                              setFocusedMsgId(null);
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-xs text-[#E8EAED] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Forward className="w-3.5 h-3.5" />
+                            <span>Forward</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMessage(msg.id)}
+                            className="px-3 py-1.5 rounded-xl text-xs text-[#F4A7B9] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFocusedMsgId(null)}
+                            aria-label="Close focus"
+                            className="p-1.5 rounded-xl text-[#9AA0A6] hover:bg-white/10 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isOutgoing && msg.simLabel && isLast && (
                       <div
                         className={`mt-1.5 pl-1 transition-all duration-200 ${
                           isBlurActive ? 'blur-[6px] opacity-35' : ''
@@ -1053,7 +1658,7 @@ export default function App() {
               <div ref={scrollEndRef} />
             </div>
 
-            {/* Bottom Reply Section (no navigation bar beneath) */}
+            {/* Bottom Reply Section */}
             {activeThread.canReply ? (
               <form
                 onSubmit={handleSendReply}
@@ -1104,7 +1709,7 @@ export default function App() {
                 />
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* Transient Pinch-to-Zoom Indicator */}
@@ -1114,7 +1719,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Persistent Heads-Up Notification Popup (stays until swiped away or dismissed) */}
+        {/* Persistent Heads-Up Notification Popup (stays until swiped away) */}
         {activeNotification && (
           <div
             onPointerDown={handleNotifPointerDown}
@@ -1150,7 +1755,11 @@ export default function App() {
                   className="w-10 h-10 rounded-full flex items-center justify-center font-display text-base font-semibold text-[#121212]"
                   style={{ backgroundColor: activeNotification.avatarColor }}
                 >
-                  {activeNotification.senderName.trim().charAt(0).toUpperCase() || 'M'}
+                  {activeNotification.avatarType === 'initial' ? (
+                    activeNotification.senderName.trim().charAt(0).toUpperCase() || 'M'
+                  ) : (
+                    <PersonSilhouetteIcon />
+                  )}
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#0B57D0] flex items-center justify-center ring-2 ring-[#282828]">
                   <MessageSquare className="w-2.5 h-2.5 text-white fill-current" />
@@ -1158,12 +1767,10 @@ export default function App() {
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px] text-[#9AA0A6]">
-                    <span>Messages</span>
-                    <span aria-hidden="true">·</span>
-                    <span>Swipe to dismiss</span>
-                  </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-[#9AA0A6]">
+                  <span>Messages</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Swipe to dismiss</span>
                 </div>
 
                 <p className="text-[14px] font-medium text-[#E8EAED] leading-snug">
@@ -1211,11 +1818,167 @@ export default function App() {
           </div>
         )}
 
-        {/* Subtle Android Toast / Snackbar */}
+        {/* Subtle Android Toast */}
         {toast && (
           <div className="absolute bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-[#303030] text-[#E8EAED] text-xs shadow-xl border border-white/10 whitespace-nowrap z-50 flex items-center gap-1.5">
             <Check className="w-3.5 h-3.5 text-[#F4A7B9]" />
             <span>{toast}</span>
+          </div>
+        )}
+
+        {/* Account Profile Sheet */}
+        {profileSheetOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-center justify-center p-5"
+            onClick={() => setProfileSheetOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-3xl bg-[#202020] border border-white/10 p-5 space-y-4 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <label className="relative cursor-pointer group shrink-0">
+                    <img
+                      src={userAvatar || profileAvatar}
+                      alt="Profile"
+                      className="w-11 h-11 rounded-full object-cover ring-1 ring-white/15"
+                    />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#303134] border border-white/15 flex items-center justify-center text-[#E8EAED]">
+                      <Camera className="w-2.5 h-2.5" />
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <div>
+                    <p className="text-sm font-medium text-[#E8EAED]">Samuel</p>
+                    <p className="font-roboto text-xs text-[#9AA0A6]">
+                      {isOnline
+                        ? pendingSyncCount > 0
+                          ? `Online · ${pendingSyncCount} queued`
+                          : lastSyncedAt
+                            ? `IndexedDB · Synced ${new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : 'IndexedDB · Offline ready'
+                        : 'Offline · Saved locally'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfileSheetOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <label className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#E8EAED] flex items-center justify-between cursor-pointer">
+                  <span>Change profile photo</span>
+                  <Camera className="w-4 h-4 text-[#9AA0A6]" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                </label>
+                {userAvatar && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserAvatar(undefined);
+                      savePreferencesToDb({ userAvatar: '' }).catch(() => {});
+                      showToast('Default photo restored');
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#9AA0A6] cursor-pointer"
+                  >
+                    Use default profile photo
+                  </button>
+                )}
+                <PWAInstallButton />
+                {pendingSyncCount > 0 && isOnline && (
+                  <button
+                    type="button"
+                    onClick={() => runSyncFlush(true)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1D2838] hover:bg-[#243246] text-left text-sm text-[#A8C7FA] cursor-pointer"
+                  >
+                    Sync {pendingSyncCount} pending change
+                    {pendingSyncCount === 1 ? '' : 's'} now
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileSheetOpen(false);
+                    setComposerOpen(true);
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#E8EAED] cursor-pointer"
+                >
+                  Simulate incoming SMS
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetConversation}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#323232] text-left text-sm text-[#F4A7B9] cursor-pointer"
+                >
+                  Restore default conversations
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sparkle Quick Message Sheet (100% Offline) */}
+        {sparkleSheetOpen && (
+          <div
+            className="absolute inset-0 z-50 bg-black/65 flex items-end"
+            onClick={() => setSparkleSheetOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-[#202020] rounded-t-[24px] p-5 border-t border-white/10 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SparkleIcon />
+                  <h2 className="text-base font-medium text-[#E8EAED]">Quick compose</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSparkleSheetOpen(false)}
+                  aria-label="Close"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#B0B3B8] hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-[#9AA0A6]">
+                Start a new message or insert an offline M-PESA template into the active thread.
+              </p>
+              <div className="space-y-2">
+                {QUICK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.label}
+                    type="button"
+                    onClick={() => {
+                      setSparkleSheetOpen(false);
+                      setDraftText(tpl.text);
+                      setComposerOpen(true);
+                    }}
+                    className="w-full p-3 rounded-2xl bg-[#2A2A2A] hover:bg-[#323232] text-left cursor-pointer"
+                  >
+                    <p className="text-sm font-medium text-[#E8EAED]">{tpl.label}</p>
+                    <p className="text-xs text-[#9AA0A6] line-clamp-1 mt-0.5">{tpl.text}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1357,7 +2120,7 @@ export default function App() {
           </div>
         )}
 
-        {/* New Chat Modal from Home Page */}
+        {/* New Chat Modal from Start Chat FAB */}
         {newChatOpen && (
           <div
             className="absolute inset-0 z-50 bg-black/65 flex items-center justify-center p-5"
@@ -1369,7 +2132,7 @@ export default function App() {
               className="w-full rounded-3xl bg-[#202020] border border-white/10 p-5 space-y-4 shadow-2xl"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-medium text-[#E8EAED]">New message</h2>
+                <h2 className="text-base font-medium text-[#E8EAED]">New conversation</h2>
                 <button
                   type="button"
                   onClick={() => setNewChatOpen(false)}
@@ -1384,8 +2147,15 @@ export default function App() {
                 autoFocus
                 value={newChatName}
                 onChange={(e) => setNewChatName(e.target.value)}
-                placeholder="Recipient name or number"
+                placeholder="Recipient name or phone number"
                 className="w-full h-11 rounded-xl bg-[#121212] border border-white/15 px-3.5 text-sm text-[#E8EAED] focus:outline-none focus:border-[#F4A7B9]"
+              />
+              <textarea
+                rows={3}
+                value={newChatMessage}
+                onChange={(e) => setNewChatMessage(e.target.value)}
+                placeholder="Optional first message..."
+                className="w-full rounded-xl bg-[#121212] border border-white/15 p-3 text-sm text-[#E8EAED] placeholder-[#747775] focus:outline-none focus:border-[#F4A7B9] resize-none"
               />
               <div className="flex justify-end gap-2">
                 <button
@@ -1398,7 +2168,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={!newChatName.trim()}
-                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#8AB4F8] text-[#121212] disabled:opacity-40 cursor-pointer"
+                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#7D2B2B] text-[#FCE8E6] disabled:opacity-40 cursor-pointer"
                 >
                   Start chat
                 </button>
@@ -1420,12 +2190,7 @@ export default function App() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-[#121212]"
-                    style={{ backgroundColor: activeThread.avatarColor }}
-                  >
-                    {avatarInitial}
-                  </div>
+                  <ThreadAvatar thread={activeThread} size="header" />
                   <h2 className="text-sm font-medium text-[#E8EAED]">
                     Receive message from {activeThread.recipientName}
                   </h2>
@@ -1440,7 +2205,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Editable recipient name right inside the sheet too */}
               <div>
                 <label className="block text-[11px] text-[#9AA0A6] mb-1">
                   Recipient name

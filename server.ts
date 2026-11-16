@@ -896,8 +896,49 @@ app.delete('/api/conversations/:id', (req, res) => {
   res.json({ deletedId: id });
 });
 
+app.get('/api/sync', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    serverTime: Date.now(),
+    status: 'online',
+  });
+});
+
+app.post('/api/sync', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+  res.json({
+    ok: true,
+    syncedCount: changes.length,
+    syncedIds: changes
+      .map((c: { id?: string }) => c?.id)
+      .filter(Boolean),
+    serverTime: Date.now(),
+  });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    app.get('/sw.js', (_req, res) => {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.send(`
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.clients.claim();
+    const allClients = await self.clients.matchAll({ type: 'window' });
+    allClients.forEach((client) => client.navigate(client.url));
+  })());
+});
+`);
+    });
+
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
