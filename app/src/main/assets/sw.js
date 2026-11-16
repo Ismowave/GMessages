@@ -70,7 +70,7 @@ if (!self.define) {
 define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
 
   workbox.setCacheNameDetails({
-    prefix: "gmessages-v4"
+    prefix: "gmessages-v5"
   });
   self.skipWaiting();
   workbox.clientsClaim();
@@ -90,7 +90,7 @@ define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
     "revision": "26dd2a1019e4e3e695016f53b1b67aab"
   }, {
     "url": "index.html",
-    "revision": "4f80e158ca2c238010f3871158cf710b"
+    "revision": "725877300639349ee039ad918a71bb91"
   }, {
     "url": "icon.svg",
     "revision": "720c0ba6ce705b6c27e79d71efa7badd"
@@ -119,10 +119,10 @@ define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
     "url": "assets/roboto-latin-400-normal-BqEyEoaF.woff2",
     "revision": null
   }, {
-    "url": "assets/index-BbQKljnD.css",
+    "url": "assets/index-C0xARrd0.js",
     "revision": null
   }, {
-    "url": "assets/index-BaXEOyV5.js",
+    "url": "assets/index-BbQKljnD.css",
     "revision": null
   }, {
     "url": "assets/google-sans-latin-700-normal-CV7aHjQV.woff",
@@ -188,6 +188,18 @@ define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 150,
       maxAgeSeconds: 31536000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(({
+    url
+  }) => url.origin === self.location.origin && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/ws") && !url.pathname.endsWith("/sw.js") && !url.pathname.endsWith("/dev-sw.js") && !url.pathname.startsWith("/workbox-"), new workbox.NetworkFirst({
+    "cacheName": "gmessages-offline-shell-v5",
+    "networkTimeoutSeconds": 2,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 350,
+      maxAgeSeconds: 2592000
     }), new workbox.CacheableResponsePlugin({
       statuses: [0, 200]
     })]

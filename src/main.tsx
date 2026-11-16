@@ -19,24 +19,28 @@ if (
   'serviceWorker' in navigator &&
   window.location.hostname !== 'appassets.androidplatform.net'
 ) {
-  navigator.serviceWorker
-    .getRegistrations()
-    .then((regs) => {
-      regs.forEach((reg) => {
-        if (import.meta.env.DEV && reg.active?.scriptURL.endsWith('/sw.js')) {
-          reg.unregister().catch(() => {});
-        } else {
-          reg.update().catch(() => {});
-        }
-      });
-    })
-    .catch(() => {});
+  if (navigator.onLine) {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => {
+        regs.forEach((reg) => {
+          if (import.meta.env.DEV && reg.active?.scriptURL.endsWith('/sw.js')) {
+            reg.unregister().catch(() => {});
+          } else {
+            reg.update().catch(() => {});
+          }
+        });
+      })
+      .catch(() => {});
+  }
 
   registerSW({
     immediate: true,
     onRegisteredSW(_swUrl, registration) {
       if (registration) {
-        registration.update().catch(() => {});
+        if (navigator.onLine) {
+          registration.update().catch(() => {});
+        }
         window.addEventListener('online', () => {
           registration.update().catch(() => {});
         });

@@ -947,7 +947,22 @@ self.addEventListener('activate', (event) => {
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(__dirname, 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      express.static(distDir, {
+        setHeaders(res, filePath) {
+          if (filePath.endsWith(`${path.sep}sw.js`) || filePath.endsWith('/sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Service-Worker-Allowed', '/');
+          } else if (
+            filePath.endsWith(`${path.sep}manifest.json`) ||
+            filePath.endsWith('/manifest.json')
+          ) {
+            res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+          }
+        },
+      }),
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });

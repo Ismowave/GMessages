@@ -67,8 +67,11 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-8d0d8005'], (function (workbox) { 'use strict';
+define(['./workbox-5db52d43'], (function (workbox) { 'use strict';
 
+  workbox.setCacheNameDetails({
+    prefix: "gmessages-v5"
+  });
   self.skipWaiting();
   workbox.clientsClaim();
   /**
@@ -78,7 +81,7 @@ define(['./workbox-8d0d8005'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "0.f51ngbggb4"
+    "revision": "0.9aka2ln9g8g"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
@@ -105,6 +108,18 @@ define(['./workbox-8d0d8005'], (function (workbox) { 'use strict';
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 150,
       maxAgeSeconds: 31536000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(({
+    url
+  }) => url.origin === self.location.origin && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/ws") && !url.pathname.endsWith("/sw.js") && !url.pathname.endsWith("/dev-sw.js") && !url.pathname.startsWith("/workbox-"), new workbox.NetworkFirst({
+    "cacheName": "gmessages-offline-shell-v5",
+    "networkTimeoutSeconds": 2,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 350,
+      maxAgeSeconds: 2592000
     }), new workbox.CacheableResponsePlugin({
       statuses: [0, 200]
     })]

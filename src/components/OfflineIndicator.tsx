@@ -37,15 +37,15 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
         <span className="truncate">
           {!isOnline
             ? pendingCount > 0
-              ? `Offline · ${pendingCount} change${pendingCount === 1 ? '' : 's'} queued locally`
-              : 'Offline mode · Using cached data'
+              ? `Offline · ${pendingCount} change${pendingCount === 1 ? '' : 's'} saved locally`
+              : 'Offline mode · Working locally'
             : isSyncing
               ? `Syncing ${pendingCount} pending change${pendingCount === 1 ? '' : 's'}...`
-              : `${pendingCount} change${pendingCount === 1 ? '' : 's'} waiting to sync`}
+              : `${pendingCount} change${pendingCount === 1 ? '' : 's'} saved locally`}
         </span>
       </div>
       {!isOnline && (
-        <span className="text-[11px] text-[#E8EAED]/75 shrink-0">Saved</span>
+        <span className="text-[11px] text-[#E8EAED]/75 shrink-0">Local</span>
       )}
     </div>
   );

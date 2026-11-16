@@ -49,7 +49,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          cacheId: 'gmessages-v4',
+          cacheId: 'gmessages-v5',
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,
@@ -58,7 +58,7 @@ export default defineConfig(() => {
           globPatterns: [
             '**/*.{js,css,html,ico,png,svg,woff,woff2,jpg,jpeg,webp}',
           ],
-          globIgnores: ['**/assets/aistudio/**'],
+          globIgnores: ['**/assets/aistudio/**', 'src/assets/images/**'],
           runtimeCaching: [
             {
               urlPattern: ({url}) => url.pathname.startsWith('/api/'),
@@ -89,6 +89,27 @@ export default defineConfig(() => {
                 expiration: {
                   maxEntries: 150,
                   maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: ({url}) =>
+                url.origin === self.location.origin &&
+                !url.pathname.startsWith('/api/') &&
+                !url.pathname.startsWith('/ws') &&
+                !url.pathname.endsWith('/sw.js') &&
+                !url.pathname.endsWith('/dev-sw.js') &&
+                !url.pathname.startsWith('/workbox-'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'gmessages-offline-shell-v5',
+                networkTimeoutSeconds: 2,
+                expiration: {
+                  maxEntries: 350,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
                 },
                 cacheableResponse: {
                   statuses: [0, 200],
